@@ -6,6 +6,8 @@ package com.example.wechat.constant;
  */
 public class WeatherConstants {
 
+    public static final String SUCCESS_FLAG = "200";
+
     /**
      * 请求位置的URL
      * 1. location 必填 需要查询地区的名称，支持文字、以英文逗号分隔的经度,纬度坐标

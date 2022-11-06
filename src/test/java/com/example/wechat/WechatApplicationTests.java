@@ -2,7 +2,7 @@ package com.example.wechat;
 
 import com.example.wechat.entity.WeatherInfo;
 import com.example.wechat.service.weather.WeatherService;
-import com.example.wechat.service.wechat.PhraseService;
+import com.example.wechat.service.phrase.PhraseService;
 import com.example.wechat.service.wechat.WechatTemplateMsgService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -26,7 +26,6 @@ class WechatApplicationTests {
      */
     @Test
     public void testSendTemplateMsg() {
-
         wechatTemplateMsgService.sendTemplateMsg();
     }
 
@@ -36,7 +35,6 @@ class WechatApplicationTests {
      */
     @Test
     public void getCityWeather() {
-
         weatherService.getWeather("杭州");
     }
 

@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.example.wechat.constant.WeatherConstants;
 import com.example.wechat.entity.WeatherInfo;
+import com.example.wechat.util.OkHttpUtil;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -33,25 +34,15 @@ public class WeatherService {
     public String findCity(String cityName) {
         String requestUrl = MessageFormat.format(WeatherConstants.LOCATION_URL, cityName, weatherKey);
 
-        OkHttpClient client = new OkHttpClient();
-        Request request = new Request.Builder().url(requestUrl).get().build();
+        String responseStr = OkHttpUtil.getRequest(requestUrl);
+        if (StringUtils.hasLength(responseStr)) {
+            JSONObject parse = (JSONObject) JSONObject.parse(responseStr);
 
-        try {
-            Response response = client.newCall(request).execute();
-            if (response.isSuccessful() && response.body() != null) {
-                String responseStr = Objects.requireNonNull(response.body()).string();
-                if (StringUtils.hasLength(responseStr)) {
-                    JSONObject parse = (JSONObject) JSONObject.parse(responseStr);
-
-                    JSONArray jsonArray = parse.getJSONArray("location");
-                    if (!jsonArray.isEmpty()) {
-                        JSONObject o = (JSONObject) jsonArray.get(0);
-                        return o.getString("id");
-                    }
-                }
+            JSONArray jsonArray = parse.getJSONArray("location");
+            if (!jsonArray.isEmpty()) {
+                JSONObject o = (JSONObject) jsonArray.get(0);
+                return o.getString("id");
             }
-        } catch (IOException e) {
-            throw new RuntimeException("获取Access Token 失败");
         }
         return null;
     }
@@ -83,38 +74,37 @@ public class WeatherService {
         WeatherInfo weatherInfo = new WeatherInfo();
 
         String requestUrl = MessageFormat.format(WeatherConstants.JUHE_WEATHER_URL, cityName, juHeWeatherKey);
-        OkHttpClient client = new OkHttpClient();
-        Request request = new Request.Builder().url(requestUrl).get().build();
-
-        try {
-            Response response = client.newCall(request).execute();
-            if (response.isSuccessful() && response.body() != null) {
-                String responseStr = Objects.requireNonNull(response.body()).string();
-
-                JSONObject responseObj = (JSONObject) JSONObject.parse(responseStr);
-                String resultCode = responseObj.getString("resultcode");
-                if (resultCode.equals("200")) {
-                    JSONObject resultObj = responseObj.getJSONObject("result");
-
-                    JSONObject today = resultObj.getJSONObject("today");
-
-                    weatherInfo.setCity(today.getString("city"));
-                    weatherInfo.setDate(today.getString("date_y") + " " + today.getString("week"));
-
-                    String temperatureStr = today.getString("temperature");
-                    String[] temperatures = temperatureStr.split("~");
-                    weatherInfo.setLowTemperature(temperatures[0]);
-                    weatherInfo.setHighTemperature(temperatures[1]);
-                    weatherInfo.setWeather(today.getString("weather"));
-                    weatherInfo.setDressAdvice(today.getString("dressing_advice"));
-
+        String responseStr = OkHttpUtil.getRequest(requestUrl);
+        if (StringUtils.hasLength(responseStr)) {
+            JSONObject responseObj = (JSONObject) JSONObject.parse(responseStr);
+            String resultCode = responseObj.getString("resultcode");
+            if (WeatherConstants.SUCCESS_FLAG.equals(resultCode)) {
+                JSONObject resultObj = responseObj.getJSONObject("result");
+                if (resultObj.isEmpty()) {
                     return weatherInfo;
                 }
+
+                JSONObject today = resultObj.getJSONObject("today");
+                if (today.isEmpty()) {
+                    return weatherInfo;
+                }
+
+                weatherInfo.setCity(today.getString("city"));
+                weatherInfo.setDate(today.getString("date_y") + " " + today.getString("week"));
+
+                weatherInfo.setWeather(today.getString("weather"));
+                weatherInfo.setDressAdvice(today.getString("dressing_advice"));
+
+                String temperatureStr = today.getString("temperature");
+                if (StringUtils.hasLength(temperatureStr)) {
+                    String[] temperatures = temperatureStr.split("~");
+
+                    weatherInfo.setLowTemperature(temperatures[0]);
+                    weatherInfo.setHighTemperature(temperatures[1]);
+                }
             }
-        } catch (IOException e) {
-            throw new RuntimeException("获取天气信息失败");
         }
-        return null;
+        return weatherInfo;
     }
 
 

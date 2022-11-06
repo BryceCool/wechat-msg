@@ -1,27 +1,26 @@
 package com.example.wechat.service.wechat;
 
-import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.example.wechat.constant.WechatConstants;
 import com.example.wechat.entity.WeatherInfo;
+import com.example.wechat.service.phrase.PhraseService;
 import com.example.wechat.service.weather.WeatherService;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
+import com.example.wechat.util.OkHttpUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 
 import javax.annotation.Resource;
-import java.io.IOException;
 import java.text.MessageFormat;
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 微信模板消息服务类
@@ -58,22 +57,7 @@ public class WechatTemplateMsgService {
             requestData.put("industry_id1", "1");
             requestData.put("industry_id2", "4");
 
-            OkHttpClient client = new OkHttpClient();
-            Request request = new Request.Builder()
-                    .url(requestUrl)
-                    .post(RequestBody.create(requestData.toString().getBytes())).build();
-
-            try {
-                Response response = client.newCall(request).execute();
-                if (response.isSuccessful() && response.body() != null) {
-                    String responseStr = Objects.requireNonNull(response.body()).string();
-                    if (StringUtils.hasLength(responseStr)) {
-                        System.out.println(responseStr);
-                    }
-                }
-            } catch (IOException e) {
-                throw new RuntimeException("设置行业失败");
-            }
+            String responseStr = OkHttpUtil.postRequest(requestUrl, requestData);
         }
     }
 
@@ -84,36 +68,42 @@ public class WechatTemplateMsgService {
         String accessToken = wechatAccessTokenService.getAccessTokenFromWechat();
         if (StringUtils.hasLength(accessToken)) {
             String requestUrl = MessageFormat.format(WechatConstants.SEND_TEMPLATE_MSG_URL, accessToken);
-
-            ExecutorService executor = Executors.newFixedThreadPool(10, r -> new Thread(r, "发送模板消息"));
-
             List<String> openIdList = wechatUserService.getUserList(accessToken);
+            if (CollectionUtils.isEmpty(openIdList)) {
+                logger.info("未查找到用户的openId");
+                return;
+            }
+
             WeatherInfo weather = weatherService.getJuHeWeather("杭州");
 
+            ExecutorService executor = Executors.newFixedThreadPool(10, r -> new Thread(r, "发送模板消息"));
             try {
-                openIdList.forEach(openId -> {
-                    CompletableFuture.runAsync(() -> {
-                        JSONObject requestData = pkgRequestData(openId, weather);
-                        logger.info("请求参数：{}", requestData.toString());
-
-                        OkHttpClient client = new OkHttpClient();
-                        Request request = new Request.Builder()
-                                .url(requestUrl)
-                                .post(RequestBody.create(JSON.toJSONString(requestData).getBytes())).build();
-
-                        try {
-                            Response response = client.newCall(request).execute();
-                            if (response.isSuccessful() && response.body() != null) {
-                                String responseStr = Objects.requireNonNull(response.body()).string();
-                                if (StringUtils.hasLength(responseStr)) {
-                                    logger.info("返回结果：" + responseStr);
+                List<Integer> resultList = openIdList.stream()
+                        .map(openId -> CompletableFuture.supplyAsync(() -> {
+                            JSONObject requestData = pkgRequestData(openId, weather);
+                            logger.info("请求参数：{}", requestData.toString());
+                            String responseStr = OkHttpUtil.postRequest(requestUrl, requestData);
+                            if (StringUtils.hasLength(responseStr)) {
+                                JSONObject responseObj = (JSONObject) JSONObject.parse(responseStr);
+                                Integer errCode = responseObj.getInteger("errcode");
+                                if (errCode == 0) {
+                                    return 1;
+                                } else {
+                                    return 0;
                                 }
                             }
-                        } catch (IOException e) {
-                            throw new RuntimeException("设置行业失败");
-                        }
-                    }, executor);
-                });
+                            return 0;
+                        }, executor)).collect(Collectors.toList())
+                        .stream().map(CompletableFuture::join).collect(Collectors.toList());
+
+                Map<Integer, Long> resultMap = resultList.stream().collect(Collectors.groupingBy(Function.identity(), Collectors.counting()));
+
+                Long successNum = resultMap.getOrDefault(1, 0L);
+                Long failedNum = resultMap.getOrDefault(0, 0L);
+                int totalNum = resultList.size();
+
+                logger.info("模板发送的成功率为：{}，失败率为：{}",
+                        (float) successNum / totalNum, (float) failedNum / totalNum);
             } finally {
                 executor.shutdown();
             }
@@ -128,7 +118,7 @@ public class WechatTemplateMsgService {
     public JSONObject pkgRequestData(String openId, WeatherInfo weatherInfo) {
         JSONObject requestData = new JSONObject();
         requestData.put("touser", openId);
-        requestData.put("template_id", "4_GbZvLpg-7BJLyw081-y_YI_ywBDgByOZSNxMQeHvY");
+        requestData.put("template_id", "bra5-dkrO41JVaVGiUiQZ_K_V6m3eySKWL53OAjnWuQ");
 
         JSONObject data = new JSONObject();
         // first data
